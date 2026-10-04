@@ -289,4 +289,16 @@ def embeddings(body: dict, a=Depends(account), idempotency_key: str = Header(min
 
 @app.get("/models", response_class=HTMLResponse)
 def model_playground():
-    return Path("app/models.html").read_text()
+    import html
+    import json
+
+    models = available_models()["data"]
+    rows = "".join(
+        "<tr>" + "".join("<td>" + html.escape(str(value)) + "</td>" for value in (
+            m["id"], m["upstream_model"], m["endpoint"],
+            str(m["dimensions"]) + " chiều" if m["dimensions"] else "Text · SSE",
+        )) + "</tr>" for m in models
+    )
+    return (Path("app/models.html").read_text()
+            .replace("<!--MODEL_ROWS-->", rows)
+            .replace("/*MODEL_DATA*/[]", json.dumps(models).replace("<", "\\u003c")))
