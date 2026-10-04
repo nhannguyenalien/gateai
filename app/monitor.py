@@ -55,7 +55,7 @@ def reconcile(client):
     if not settings.openrouter_api_key:
         return
     with db() as c:
-        rows = c.execute("""SELECT id,generation_id FROM jobs WHERE generation_id IS NOT NULL
+        rows = c.execute("""SELECT id,generation_id,provider,status,result FROM jobs WHERE generation_id IS NOT NULL
             AND actual_cost IS NULL AND provider IN ('openrouter','litellm')
             AND status IN ('succeeded','failed','needs_review')
             AND (cost_checked_at IS NULL OR cost_checked_at<now()-interval '5 minutes')
@@ -64,6 +64,16 @@ def reconcile(client):
         with db() as c:
             c.execute("UPDATE jobs SET cost_checked_at=now() WHERE id=%s", (row["id"],))
         try:
+            result = row["result"] or {}
+            usage = result.get("usage") or {}
+            if (
+                row["provider"] == "openrouter"
+                and row["status"] == "succeeded"
+                and result.get("id") == row["generation_id"]
+                and usage.get("cost") is not None
+            ):
+                record_cost(row["id"], row["generation_id"], usage["cost"])
+                continue
             res = client.get(
                 "https://openrouter.ai/api/v1/generation",
                 params={"id": row["generation_id"]},

@@ -142,8 +142,10 @@ Run `GATEWAY_URL=https://your-gateway GATEWAY_API_KEY=... uv run python scripts/
 using a project key (never the admin key). It checks non-streaming, idempotent replay,
 and complete SSE termination without submitting any paid media request.
 
-The `monitor` service polls OpenRouter generation receipts and fal billing events by
-request ID. `actual_cost` stays null until a matching receipt arrives; estimates are
+The `monitor` service records `usage.cost` from completed direct OpenRouter responses
+(including streaming), with generation receipt polling as a fallback. It also polls fal
+billing events by request ID. See [OpenRouter usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting).
+`actual_cost` stays null until a matching receipt arrives; estimates are
 never presented as actual costs. Dashboard stats expose reconciliation coverage.
 Fal billing access may require a suitably scoped key; missing/ambiguous receipts stay
 pending. This does not reconcile Runpod or non-OpenRouter upstreams behind LiteLLM.

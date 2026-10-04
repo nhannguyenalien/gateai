@@ -195,3 +195,29 @@ def test_stream_disconnect_retains_reservation(aid, free, monkeypatch):
             c.execute("SELECT status FROM jobs WHERE account_id=%s", (aid,)).fetchone()["status"]
             == "needs_review"
         )
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_openrouter_usage_and_receipt_fallback(aid, free, inline):
+    from app.monitor import reconcile
+    from psycopg.types.json import Jsonb
+
+    route = {"provider": "openrouter", "max_cost_micros": 0, "user_price_micros": 0}
+    job, _ = reserve(aid, "inline-usage", "chat", "chat-free", {}, route)
+    result = {"id": "gen-inline", "usage": {"cost": 0} if inline else {}}
+    with db() as c:
+        c.execute(
+            "UPDATE jobs SET status='succeeded',generation_id='gen-inline',result=%s WHERE id=%s",
+            (Jsonb(result), job["id"]),
+        )
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"data": {"id": "gen-inline", "total_cost": 0}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        reconcile(client)
+    assert len(calls) == (0 if inline else 1)
+    with db() as c:
+        assert c.execute("SELECT actual_cost FROM jobs WHERE id=%s", (job["id"],)).fetchone()["actual_cost"] == 0
