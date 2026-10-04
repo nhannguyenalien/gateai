@@ -14,7 +14,7 @@ def main():
         for stream in (False, True):
             key = str(uuid.uuid4())
             body = {
-                "model": "chat-free",
+                "model": os.environ.get("GATEWAY_MODEL", "chat-free"),
                 "messages": [{"role": "user", "content": "Reply with the word hello."}],
                 "stream": stream,
             }

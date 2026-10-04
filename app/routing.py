@@ -5,6 +5,27 @@ from fastapi import HTTPException
 from app.settings import settings
 
 
+def available_models():
+    routes = yaml.safe_load(Path(settings.routes_file).read_text()) or {}
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": alias,
+                "object": "model",
+                "created": 0,
+                "owned_by": "gateai",
+                "kind": r["kind"],
+                "upstream_model": r["model"],
+                "streaming": r["kind"] == "chat",
+                "max_input_bytes": r.get("max_input_bytes", 16000),
+                "max_output_tokens": r.get("fixed", {}).get("max_tokens"),
+            }
+            for alias, r in routes.items() if r.get("enabled")
+        ],
+    }
+
+
 def route_for(alias, kind, payload):
     routes = yaml.safe_load(Path(settings.routes_file).read_text()) or {}
     if not isinstance(alias, str):

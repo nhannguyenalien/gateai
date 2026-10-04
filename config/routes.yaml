@@ -88,3 +88,17 @@ chat-free:
   fixed: {max_tokens: 1024}
   max_cost_micros: 0
   user_price_micros: 0
+
+# OpenRouter rejected generic API calls with 403 (agentic harness required).
+# Enable only after approved access and a successful provider smoke test.
+chat-inkling-free:
+  enabled: false
+  kind: chat
+  provider: openrouter
+  model: thinkingmachines/inkling:free
+  free: true
+  allowed_inputs: [messages, stream]
+  max_input_bytes: 12000
+  fixed: {max_tokens: 1024}
+  max_cost_micros: 0
+  user_price_micros: 0

@@ -114,8 +114,8 @@ Tests tự tạo và xóa `gateai_test_<uuid>` trên DB cấu hình, cần quy�
 ## Các bước triển khai còn cần cấu hình
 
 - VPS/SSH, DNS/Cloudflare Tunnel, provider key và private bucket chưa được provision bởi repo này.
-- Streaming, JWT/end-user rate limit, Telegram alerts, actual token cost settlement, GPU runtime metrics và tự provisioning Pod là phần mở rộng tiếp theo.
-- Dashboard hiện hiển thị cost bound, không gọi đó là chi phí thực hay gross margin thực.
+- JWT/end-user rate limit, actual token price settlement, GPU runtime metrics và tự provisioning Pod là phần mở rộng tiếp theo.
+- Dashboard hiển thị cost bound và chi phí thực đã đối soát riêng biệt, kèm số job còn chờ.
 - Chưa có OpenMeter, payment gateway hoặc thanh toán tự động.
 
 Tài liệu giao thức: [LiteLLM production](https://docs.litellm.ai/docs/proxy/deploy), [fal queue](https://fal.ai/docs/documentation/model-apis/inference/queue), [Runpod requests](https://docs.runpod.io/serverless/endpoints/send-requests).
@@ -155,3 +155,9 @@ Alerts cover 80% of the daily budget, provider error spikes, and cost overruns. 
 persisted, deduplicated, and retried after five minutes, and contain no prompts or keys.
 A delivery acknowledgement lost in transit can still result in a duplicate notification.
 Unfunded fal accounts cannot complete paid image/video E2E tests; paid routes remain disabled.
+
+## Tích hợp ứng dụng
+
+Xem [API dành cho dev](docs/api.md): model aliases, `/v1/models`, curl chat/SSE,
+idempotency, lỗi và cách cấp project key. `chat-inkling-free` đã cấu hình nhưng tắt do OpenRouter trả 403 yêu cầu agentic harness;
+`chat-free` gọi Nemotron free.

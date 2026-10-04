@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.billing import finish, reserve
 from app.db import db
 from app.providers import submit
-from app.routing import route_for
+from app.routing import available_models, route_for
 from app.settings import settings
 from app.storage import signed
 from app.streaming import save_generation, stream_chat
@@ -158,6 +158,11 @@ def revoke(aid: uuid.UUID):
     with db() as c:
         c.execute("UPDATE api_keys SET revoked=true WHERE account_id=%s", (aid,))
     return {"revoked": True}
+
+
+@app.get("/v1/models")
+def models(a=Depends(account)):
+    return available_models()
 
 
 @app.get("/v1/balance")
