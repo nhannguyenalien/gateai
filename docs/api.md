@@ -155,3 +155,39 @@ message `Hello` và key server. OpenRouter trả JSON lỗi code **403**, không
 Vì vậy route này tắt và không xuất hiện trong `/v1/models`. Không giả mạo tên ứng dụng
 để vượt điều kiện provider. Cần tích hợp qua harness được chấp nhận hoặc làm việc với
 OpenRouter trước khi bật. Nemotron `chat-free` vẫn sử dụng được như các ví dụ trên.
+
+## Playground và embedding free
+
+Mở https://ai-gateway.schoolsai.work/models, nhập **project API key** để tải danh sách,
+chọn ID và test. Không nhập ADMIN_KEY/provider key. Key chỉ giữ trong bộ nhớ trang.
+GET /v1/models trả thêm endpoint, dimensions và giới hạn input cho dev chọn đúng API.
+
+| Gateway ID | Upstream ID | Chiều |
+|---|---|---|
+| embed-nemotron-free | nvidia/nemotron-3-embed-1b:free | 2048 |
+| embed-nemotron-vl-free | nvidia/llama-nemotron-embed-vl-1b-v2:free | 2048 |
+| embed-liquid-free | liquid/lfm-2.5-embedding-350m:free | 1024 |
+
+POST /v1/embeddings nhận input là chuỗi hoặc mảng 1–16 chuỗi không rỗng.
+Chỉ hỗ trợ text, vector float; không hỗ trợ ảnh, token IDs hoặc tùy chỉnh dimensions.
+Giới hạn JSON: Liquid 1500 bytes; NVIDIA 12000 bytes. Đây là giới hạn gateway,
+không phải token context: Liquid có context 512 token, provider vẫn có thể từ chối
+input vượt giới hạn token. Dùng cùng model khi index và query; không trộn vector
+từ các model khác nhau, kể cả cùng số chiều.
+
+```bash
+curl https://ai-gateway.schoolsai.work/v1/embeddings \
+  -H "Authorization: Bearer $GATEAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"model":"embed-liquid-free","input":["Bút chì đỏ","Bút chì xanh"]}'
+```
+
+Chat mới: chat-apodex-free, chat-laguna-free, chat-nano-free, chat-liquid-free.
+Dùng /v1/chat/completions, hỗ trợ stream:true như chat-free.
+Laguna free dự kiến ngừng ngày 31/10/2026. Free có rate limit/provider availability;
+không tự fallback sang model trả phí. Inkling/Gemma chưa bật do lỗi quyền/quota
+trong lần test. Mercury dùng API riêng nên chưa đưa vào chat endpoint.
+
+Chỉ gửi dữ liệu mẫu không nhạy cảm tới free provider; có thể có logging/training
+theo điều khoản từng provider. Kết quả test thành công không bảo đảm SLA.

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GateAI · Model playground</title>
+<style>
+body{font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 20px;background:#101827;color:#e7edf8}h1{margin-bottom:8px}label{display:block;margin:20px 0 8px}input,select,textarea,button{font:inherit;padding:12px;border-radius:8px;border:1px solid #50607a;background:#18243a;color:inherit;box-sizing:border-box}input,select,textarea{width:100%}button{cursor:pointer;margin:12px 8px 0 0;background:#2459bb}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#18243a;padding:16px;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:10px;text-align:left;border-bottom:1px solid #38475e;overflow-wrap:anywhere}a{color:#9dc3ff}.hint{color:#abbcd4}section{overflow-x:auto}
+</style>
+<h1>GateAI · Model playground</h1>
+<p>Chọn model ID, gọi thử chat hoặc tạo embedding bằng project API key.</p>
+<p class="hint">Chỉ dùng dữ liệu mẫu với endpoint free. Không gửi thông tin bí mật hoặc dữ liệu cá nhân. Provider có thể ghi log; free có quota và có thể tạm ngừng.</p>
+<label for="key">Project API key (gai_…)</label><input id="key" type="password" autocomplete="off" placeholder="Không dùng ADMIN_KEY hoặc key OpenRouter">
+<button id="load">Tải danh sách model</button><span id="status" role="status"></span>
+<label for="model">Model ID của gateway</label><select id="model" disabled></select>
+<p id="details" class="hint"></p>
+<label for="prompt">Nội dung test (text)</label><textarea id="prompt" rows="4">Xin chào! Trả lời ngắn gọn bằng tiếng Việt.</textarea>
+<button id="test" disabled>Gọi API</button>
+<p class="hint">Key chỉ giữ trong bộ nhớ trang, không lưu vào trình duyệt. Mỗi lần test tạo Idempotency-Key mới. Embedding hiển thị kích thước và 8 giá trị đầu.</p>
+<pre id="result" aria-live="polite">Kết quả sẽ hiển thị ở đây.</pre>
+<h2>Ví dụ curl</h2><pre id="curl">Tải danh sách để chọn model.</pre>
+<h2>Model đang bật</h2><section><table><thead><tr><th>Gateway ID</th><th>Upstream ID</th><th>Loại</th></tr></thead><tbody id="list"></tbody></table></section>
+<script>
+const $=id=>document.getElementById(id);let models=[];
+function selected(){return models.find(m=>m.id===$('model').value)}
+function update(){const m=selected();if(!m)return;
+$('details').textContent=m.upstream_model+' · '+m.endpoint+(m.dimensions?' · '+m.dimensions+' chiều':' · hỗ trợ streaming')+' · tối đa '+m.max_input_bytes+' bytes JSON';
+const body=m.kind==='embeddings'?{model:m.id,input:$('prompt').value}:{model:m.id,messages:[{role:'user',content:$('prompt').value}],stream:false};
+$('curl').textContent='curl '+location.origin+m.endpoint+' \\\n  -H "Authorization: Bearer $GATEAI_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -H "Idempotency-Key: $(uuidgen)" \\\n  --data '+"'" + JSON.stringify(body).replaceAll("'", "'\"'\"'") + "'";
+}
+async function request(path,options={}){const r=await fetch(path,{...options,headers:{Authorization:'Bearer '+$('key').value.trim(),'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(150000)});const data=await r.json();if(!r.ok)throw new Error('HTTP '+r.status+' · '+JSON.stringify(data));return data}
+$('load').onclick=async()=>{ $('load').disabled=true;$('status').textContent='Đang tải…';
+try{models=(await request('/v1/models')).data.filter(m=>['chat','embeddings'].includes(m.kind));$('model').replaceChildren();$('list').replaceChildren();
+for(const m of models){const o=document.createElement('option');o.value=m.id;o.textContent=m.id+' · '+m.kind;$('model').append(o);
+const tr=document.createElement('tr');for(const value of [m.id,m.upstream_model,m.kind]){const td=document.createElement('td');td.textContent=value;tr.append(td)}$('list').append(tr)}
+$('model').disabled=!models.length;$('test').disabled=!models.length;$('status').textContent=models.length+' model';update();
+}catch(e){$('status').textContent=e.message}finally{$('load').disabled=false}};
+$('model').onchange=update;$('prompt').oninput=update;
+$('test').onclick=async()=>{const m=selected();if(!m)return;$('test').disabled=true;$('result').textContent='Đang gọi…';const started=performance.now();
+try{const body=m.kind==='embeddings'?{model:m.id,input:$('prompt').value}:{model:m.id,messages:[{role:'user',content:$('prompt').value}],stream:false};
+const data=await request(m.endpoint,{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(body)});
+if(m.kind==='embeddings')data.data=data.data.map(e=>({...e,dimensions:e.embedding.length,embedding:e.embedding.slice(0,8),preview:true}));
+$('result').textContent=((performance.now()-started)/1000).toFixed(2)+' giây\n'+JSON.stringify(data,null,2);
+}catch(e){$('result').textContent=e.message}finally{$('test').disabled=false}};
+</script></html>

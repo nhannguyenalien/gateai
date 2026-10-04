@@ -18,6 +18,8 @@ def available_models():
                 "kind": r["kind"],
                 "upstream_model": r["model"],
                 "streaming": r["kind"] == "chat",
+                "endpoint": "/v1/embeddings" if r["kind"] == "embeddings" else "/v1/chat/completions",
+                "dimensions": r.get("dimensions"),
                 "max_input_bytes": r.get("max_input_bytes", 16000),
                 "max_output_tokens": r.get("fixed", {}).get("max_tokens"),
             }
@@ -67,6 +69,13 @@ def route_for(alias, kind, payload):
             )
         ):
             raise HTTPException(400, "Only text messages are supported by this priced route")
+    if kind == "embeddings":
+        value = payload.get("input")
+        items = [value] if isinstance(value, str) else value
+        if not isinstance(items, list) or not 1 <= len(items) <= 16 or any(
+            not isinstance(item, str) or not item.strip() for item in items
+        ):
+            raise HTTPException(400, "input must be nonempty text or 1–16 nonempty text strings")
     if kind == "responses" and not isinstance(payload.get("input"), str):
         raise HTTPException(400, "Responses input must be text")
     if r["provider"] == "fal" and not settings.fal_key:

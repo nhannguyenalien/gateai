@@ -280,3 +280,13 @@ def stats():
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
     return Path("app/dashboard.html").read_text()
+
+
+@app.post("/v1/embeddings")
+def embeddings(body: dict, a=Depends(account), idempotency_key: str = Header(min_length=8, max_length=150)):
+    return chat_request(body, "embeddings", a, idempotency_key)
+
+
+@app.get("/models", response_class=HTMLResponse)
+def model_playground():
+    return Path("app/models.html").read_text()

@@ -18,7 +18,7 @@ def submit(job):
     with httpx.Client(timeout=130) as c:
         if job["provider"] == "openrouter":
             res = c.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                "https://openrouter.ai/api/v1/" + ("embeddings" if job["kind"] == "embeddings" else "chat/completions"),
                 headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
                 json={"model": r["model"], **payload},
             )
