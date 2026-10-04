@@ -4,7 +4,7 @@ AI Gateway cho nhiều project: FastAPI đứng trước LiteLLM, OpenRouter cho
 
 ## Đã có trong MVP
 
-- `/v1/chat/completions`, `/v1/responses`: proxy realtime, text-only, không streaming; cần `Idempotency-Key`. Đây là tập con API OpenAI, chưa hỗ trợ toàn bộ tham số của SDK.
+- `/v1/chat/completions`, `/v1/responses`: proxy realtime, text-only; chat hỗ trợ SSE streaming, Responses chưa hỗ trợ streaming; cần `Idempotency-Key`. Đây là tập con API OpenAI, chưa hỗ trợ toàn bộ tham số của SDK.
 - `/v1/image`, `/v1/video`, `/v1/tts`, `/v1/stt`, `/v1/custom`: nhận job và trả HTTP 202; `/v1/jobs/{id}` để poll.
 - Alias model server-side; client không được ghi đè model thật, số ảnh, độ dài output hay thông số tính phí cố định.
 - API key lưu SHA-256; thu hồi key, nạp credit có reference chống trùng, rate limit theo project.
@@ -98,7 +98,7 @@ Job `failed` hoàn credit; vẫn giữ cost reservation ngày vì vendor có th�
 uv run python -m scripts.reconcile JOB_UUID --outcome failed --note 'Verified provider did not deliver output'
 ```
 
-S3 upload hoặc polling lỗi sẽ được thử lại, không submit model mới. Nếu provider hết thời hạn giữ kết quả, cần operator đối soát. Hiện chưa có giao diện tự động giải quyết dispute, timeout job tổng thể hay usage reconciliation từ hóa đơn vendor.
+S3 upload hoặc polling lỗi sẽ được thử lại, không submit model mới. Nếu provider hết thời hạn giữ kết quả, cần operator đối soát. Hiện chưa có giao diện tự động giải quyết dispute, timeout job tổng thể hay đối chiếu toàn bộ hóa đơn vendor; monitor đối soát chi phí từng request OpenRouter/fal.
 
 ## Kiểm thử
 
