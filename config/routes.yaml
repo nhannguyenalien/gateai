@@ -1,0 +1,77 @@
+# USD micro-units: 1 USD = 1,000,000. These are illustrative bounds, NOT vendor quotes.
+# Verify provider price for fixed parameters before enabling any route.
+chat-fast:
+  enabled: false
+  kind: chat
+  provider: litellm
+  model: chat-fast
+  allowed_inputs: [messages]
+  max_input_bytes: 12000
+  fixed: {max_tokens: 1024, stream: false}
+  max_cost_micros: 10000
+  user_price_micros: 20000
+chat-smart:
+  enabled: false
+  kind: chat
+  provider: litellm
+  model: chat-smart
+  allowed_inputs: [messages]
+  max_input_bytes: 12000
+  fixed: {max_tokens: 1024, stream: false}
+  max_cost_micros: 100000
+  user_price_micros: 200000
+image-standard:
+  enabled: false
+  kind: image
+  provider: fal
+  model: fal-ai/flux/schnell
+  allowed_inputs: [prompt]
+  fixed: {num_images: 1, image_size: square_hd, num_inference_steps: 4}
+  max_cost_micros: 20000
+  user_price_micros: 40000
+video-standard:
+  enabled: false
+  kind: video
+  provider: fal
+  model: REPLACE_WITH_VERIFIED_FAL_VIDEO_ENDPOINT
+  allowed_inputs: [prompt]
+  fixed: {duration: '5'}
+  max_cost_micros: 1000000
+  user_price_micros: 2000000
+tts-standard:
+  enabled: false
+  kind: tts
+  provider: fal
+  model: REPLACE_WITH_VERIFIED_FAL_TTS_ENDPOINT
+  allowed_inputs: [text]
+  fixed: {}
+  max_cost_micros: 100000
+  user_price_micros: 200000
+stt-standard:
+  enabled: false
+  kind: stt
+  provider: fal
+  model: REPLACE_WITH_VERIFIED_FAL_STT_ENDPOINT
+  allowed_inputs: [audio_url]
+  fixed: {}
+  max_cost_micros: 100000
+  user_price_micros: 200000
+custom-gpu:
+  enabled: false
+  kind: custom
+  provider: runpod
+  model: REPLACE_WITH_SERVERLESS_ENDPOINT_ID
+  allowed_inputs: [prompt]
+  fixed: {}
+  max_cost_micros: 1000000
+  user_price_micros: 2000000
+responses-fast:
+  enabled: false
+  kind: responses
+  provider: litellm
+  model: chat-fast
+  allowed_inputs: [input]
+  max_input_bytes: 12000
+  fixed: {max_output_tokens: 1024, stream: false}
+  max_cost_micros: 10000
+  user_price_micros: 20000

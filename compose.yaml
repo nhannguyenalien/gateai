@@ -1,0 +1,44 @@
+services:
+  migrate:
+    build: .
+    env_file: .env
+    command: [uv, run, --no-sync, python, -m, app.db]
+  api:
+    build: .
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      LITELLM_URL: http://litellm:4000
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    command: [uv, run, --no-sync, python, -m, app.worker]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 256mb, --maxmemory-policy, noeviction]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.98.0
+    env_file: .env
+    volumes: [./config/litellm.yaml:/app/config.yaml:ro]
+    command: [--config, /app/config.yaml, --port, '4000']
+    restart: unless-stopped
+volumes:
+  redis_data:
