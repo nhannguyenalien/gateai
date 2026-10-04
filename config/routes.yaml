@@ -5,7 +5,7 @@ chat-fast:
   kind: chat
   provider: litellm
   model: chat-fast
-  allowed_inputs: [messages]
+  allowed_inputs: [messages, stream]
   max_input_bytes: 12000
   fixed: {max_tokens: 1024, stream: false}
   max_cost_micros: 10000
@@ -15,7 +15,7 @@ chat-smart:
   kind: chat
   provider: litellm
   model: chat-smart
-  allowed_inputs: [messages]
+  allowed_inputs: [messages, stream]
   max_input_bytes: 12000
   fixed: {max_tokens: 1024, stream: false}
   max_cost_micros: 100000
@@ -75,3 +75,16 @@ responses-fast:
   fixed: {max_output_tokens: 1024, stream: false}
   max_cost_micros: 10000
   user_price_micros: 20000
+
+# Public/synthetic text only: NVIDIA free endpoint records inputs under its trial terms.
+chat-free:
+  enabled: true
+  kind: chat
+  provider: openrouter
+  model: nvidia/nemotron-3-ultra-550b-a55b:free
+  free: true
+  allowed_inputs: [messages, stream]
+  max_input_bytes: 12000
+  fixed: {max_tokens: 1024}
+  max_cost_micros: 0
+  user_price_micros: 0

@@ -14,6 +14,8 @@ from app.providers import submit
 from app.routing import route_for
 from app.settings import settings
 from app.storage import signed
+from app.streaming import save_generation, stream_chat
+from starlette.concurrency import run_in_threadpool
 
 app = FastAPI(title="GateAI", version="0.1.0")
 cache = redis.Redis.from_url(settings.redis_url, socket_timeout=2, socket_connect_timeout=2)
@@ -217,13 +219,16 @@ def chat_request(body, kind, a, key):
             502,
             {"job_id": str(j["id"]), "message": "Provider outcome uncertain; credit held for reconciliation"},
         )
+    save_generation(j["id"], result.get("id"))
     finish(j["id"], "succeeded", result)
     return result
 
 
 @app.post("/v1/chat/completions")
-def chat(body: dict, a=Depends(account), idempotency_key: str = Header(min_length=8, max_length=150)):
-    return chat_request(body, "chat", a, idempotency_key)
+async def chat(body: dict, a=Depends(account), idempotency_key: str = Header(min_length=8, max_length=150)):
+    if body.get("stream") is True:
+        return await stream_chat(body, a, idempotency_key)
+    return await run_in_threadpool(chat_request, body, "chat", a, idempotency_key)
 
 
 @app.post("/v1/responses")
@@ -244,10 +249,27 @@ def stats():
         budgets = c.execute(
             "SELECT scope,reserved FROM budgets WHERE day=(now() AT TIME ZONE 'UTC')::date"
         ).fetchall()
+        costs = c.execute("""SELECT sum(actual_cost) AS actual_cost_micros,
+            count(*) FILTER (WHERE actual_cost IS NOT NULL) AS reconciled,
+            count(*) FILTER (WHERE actual_cost IS NULL) AS pending
+            FROM jobs WHERE created_at>=date_trunc('month',now())""").fetchone()
+        alert_counts = c.execute(
+            "SELECT count(*) FILTER (WHERE sent_at IS NULL) AS pending, count(*) FILTER (WHERE sent_at IS NOT NULL) AS sent FROM alerts"
+        ).fetchone()
         recent = c.execute(
             "SELECT id,alias,status,created_at FROM jobs ORDER BY created_at DESC LIMIT 30"
         ).fetchall()
-    return {"month": summary, "providers": groups, "queue": queue, "today_budgets": budgets, "recent": recent}
+    return {
+        "actual_costs": costs,
+        "global_daily_cap_micros": settings.global_daily_cap_micros,
+        "telegram_configured": bool(settings.telegram_bot_token and settings.telegram_chat_id),
+        "alerts": alert_counts,
+        "month": summary,
+        "providers": groups,
+        "queue": queue,
+        "today_budgets": budgets,
+        "recent": recent,
+    }
 
 
 @app.get("/", response_class=HTMLResponse)

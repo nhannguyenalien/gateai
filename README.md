@@ -123,3 +123,33 @@ Tài liệu giao thức: [LiteLLM production](https://docs.litellm.ai/docs/proxy
 ## Coolify
 
 Xem [hướng dẫn triển khai Coolify](docs/coolify.md), dùng `compose.coolify.yaml`.
+
+### Streaming, free testing, cost reconciliation, alerts
+
+The global admission budget defaults to **$20 per UTC day** (07:00 Vietnam reset).
+It reserves maximum configured provider cost before submission; actual overruns increase
+that reservation and raise an alert. This is a gateway admission cap, not a provider-side
+spending guarantee. Configure provider account limits too before enabling paid routes.
+
+`chat-free` maps exclusively to `nvidia/nemotron-3-ultra-550b-a55b:free` through OpenRouter,
+with no paid fallback. It accepts `stream: true` at `/v1/chat/completions`; keep the
+`Idempotency-Key` header. Streaming responses include `X-Job-ID`. Reusing a streaming
+key returns 409 with the stored job ID; fetch `/v1/jobs/{id}` instead of resubmitting.
+Interrupted streams remain `needs_review`. Only send synthetic/public content to this
+free endpoint: its provider records inputs. Free capacity and quotas can limit availability.
+
+Run `GATEWAY_URL=https://your-gateway GATEWAY_API_KEY=... uv run python scripts/smoke_free.py`
+using a project key (never the admin key). It checks non-streaming, idempotent replay,
+and complete SSE termination without submitting any paid media request.
+
+The `monitor` service polls OpenRouter generation receipts and fal billing events by
+request ID. `actual_cost` stays null until a matching receipt arrives; estimates are
+never presented as actual costs. Dashboard stats expose reconciliation coverage.
+Fal billing access may require a suitably scoped key; missing/ambiguous receipts stay
+pending. This does not reconcile Runpod or non-OpenRouter upstreams behind LiteLLM.
+
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Coolify and redeploy to enable delivery.
+Alerts cover 80% of the daily budget, provider error spikes, and cost overruns. They are
+persisted, deduplicated, and retried after five minutes, and contain no prompts or keys.
+A delivery acknowledgement lost in transit can still result in a duplicate notification.
+Unfunded fal accounts cannot complete paid image/video E2E tests; paid routes remain disabled.

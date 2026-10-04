@@ -24,6 +24,13 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     restart: unless-stopped
+  monitor:
+    build: .
+    env_file: .env
+    command: [uv, run, --no-sync, python, -m, app.monitor]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
   redis:
     image: redis:7.4-alpine
     command: [redis-server, --appendonly, 'yes', --maxmemory, 256mb, --maxmemory-policy, noeviction]

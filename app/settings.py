@@ -16,9 +16,12 @@ class Settings(BaseSettings):
     admin_key: str
     litellm_url: str = "http://litellm:4000"
     litellm_master_key: str
+    openrouter_api_key: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
     fal_key: str = ""
     runpod_api_key: str = ""
-    global_daily_cap_micros: int = 100_000_000
+    global_daily_cap_micros: int = 20_000_000
     routes_file: str = "config/routes.yaml"
 
 

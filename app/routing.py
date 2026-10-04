@@ -12,7 +12,14 @@ def route_for(alias, kind, payload):
     r = routes.get(alias)
     if not r or not r.get("enabled") or r["kind"] != kind:
         raise HTTPException(400, "Unknown or disabled model alias")
-    if r["max_cost_micros"] <= 0 or r["max_cost_micros"] * 100 > r["user_price_micros"] * 60:
+    free = (
+        r.get("free") is True
+        and r["provider"] == "openrouter"
+        and r["model"].endswith(":free")
+        and r["max_cost_micros"] == 0
+        and r["user_price_micros"] == 0
+    )
+    if not free and (r["max_cost_micros"] <= 0 or r["max_cost_micros"] * 100 > r["user_price_micros"] * 60):
         raise HTTPException(503, "Route violates cost policy")
     # Only explicitly priced inputs are accepted. Fixed parameters cannot be overridden.
     if set(payload) - set(r["allowed_inputs"]):
@@ -21,6 +28,10 @@ def route_for(alias, kind, payload):
 
     if len(json.dumps(payload).encode()) > r.get("max_input_bytes", 16000):
         raise HTTPException(413, "Input exceeds priced limit")
+    if "stream" in payload and not isinstance(payload["stream"], bool):
+        raise HTTPException(400, "stream must be boolean")
+    if r["provider"] == "openrouter" and not settings.openrouter_api_key:
+        raise HTTPException(503, "OpenRouter is not configured")
     if kind == "chat":
         messages = payload.get("messages")
         if (

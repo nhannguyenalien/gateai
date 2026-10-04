@@ -16,7 +16,13 @@ def submit(job):
     r = job["route"]
     payload = {**job["payload"], **r["fixed"]}
     with httpx.Client(timeout=130) as c:
-        if job["provider"] == "litellm":
+        if job["provider"] == "openrouter":
+            res = c.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                json={"model": r["model"], **payload},
+            )
+        elif job["provider"] == "litellm":
             path = "/v1/responses" if job["kind"] == "responses" else "/v1/chat/completions"
             res = c.post(
                 settings.litellm_url + path,
@@ -42,7 +48,10 @@ def submit(job):
         else:
             raise ValueError("Unknown provider")
         res.raise_for_status()
-        return res.json()
+        data = res.json()
+        if data.get("error"):
+            raise ValueError("Provider returned an error")
+        return data
 
 
 def poll(job):

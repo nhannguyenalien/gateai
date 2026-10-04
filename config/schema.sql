@@ -30,3 +30,12 @@ CREATE TABLE IF NOT EXISTS usage (
  job_id uuid PRIMARY KEY REFERENCES jobs(id), provider text NOT NULL, alias text NOT NULL,
  cost_upper_bound bigint NOT NULL, revenue bigint NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Additive, repeatable migration; existing jobs and credits remain intact.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS generation_id text;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS actual_cost bigint CHECK(actual_cost>=0);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cost_checked_at timestamptz;
+CREATE TABLE IF NOT EXISTS alerts (
+ key text PRIMARY KEY, message text NOT NULL, sent_at timestamptz,
+ attempts integer NOT NULL DEFAULT 0, next_attempt timestamptz NOT NULL DEFAULT now()
+);
