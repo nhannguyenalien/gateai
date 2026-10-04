@@ -23,4 +23,5 @@ jobs:
       - run: uv run ruff check .
       - run: uv run python -m app.db
       - run: uv run pytest -q
+      - run: docker compose -f compose.coolify.yaml config --quiet
       - run: docker build -t gateai:test .

@@ -1,0 +1,67 @@
+x-gateway-env: &gateway-env
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in Coolify}
+  ADMIN_KEY: ${ADMIN_KEY:?Set ADMIN_KEY in Coolify}
+  LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in Coolify}
+  REDIS_URL: redis://redis:6379/0
+  LITELLM_URL: http://litellm:4000
+  FAL_KEY: ${FAL_KEY:-}
+  RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
+  GLOBAL_DAILY_CAP_MICROS: ${GLOBAL_DAILY_CAP_MICROS:-100000000}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_REGION: ${S3_REGION:-auto}
+  ASSET_ALLOWED_HOSTS: ${ASSET_ALLOWED_HOSTS:-fal.media}
+  ASSET_MAX_BYTES: ${ASSET_MAX_BYTES:-104857600}
+services:
+  migrate:
+    build: .
+    environment: *gateway-env
+    command: [uv, run, --no-sync, python, -m, app.db]
+    restart: 'no'
+  api:
+    build: .
+    environment: *gateway-env
+    expose: ['8000']
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    restart: unless-stopped
+  worker:
+    build: .
+    environment: *gateway-env
+    command: [uv, run, --no-sync, python, -m, app.worker]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 256mb, --maxmemory-policy, noeviction]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  litellm:
+    build:
+      context: .
+      dockerfile: Dockerfile.litellm
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in Coolify}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      CHAT_FAST_MODEL: ${CHAT_FAST_MODEL:-openrouter/REPLACE_MODEL}
+      CHAT_SMART_MODEL: ${CHAT_SMART_MODEL:-openrouter/REPLACE_MODEL}
+    command: [--config, /app/config.yaml, --port, '4000']
+    restart: unless-stopped
+volumes:
+  redis_data:

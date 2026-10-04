@@ -119,3 +119,7 @@ Tests tự tạo và xóa `gateai_test_<uuid>` trên DB cấu hình, cần quy�
 - Chưa có OpenMeter, payment gateway hoặc thanh toán tự động.
 
 Tài liệu giao thức: [LiteLLM production](https://docs.litellm.ai/docs/proxy/deploy), [fal queue](https://fal.ai/docs/documentation/model-apis/inference/queue), [Runpod requests](https://docs.runpod.io/serverless/endpoints/send-requests).
+
+## Coolify
+
+Xem [hướng dẫn triển khai Coolify](docs/coolify.md), dùng `compose.coolify.yaml`.
