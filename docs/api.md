@@ -34,6 +34,10 @@ Endpoint miễn phí chỉ dùng dữ liệu công khai/giả lập. NVIDIA ghi 
 chỉ dành cho **agentic harnesses**, ghi lại prompts/outputs để cải thiện sản phẩm;
 không gửi dữ liệu cá nhân hoặc bí mật. Gateway chuyển tiếp tools, tool messages và content parts ảnh/audio/video theo khả năng model.
 
+## Khả năng đã kiểm thử
+
+Kiểm thử production ngày 05/10/2026: chat-liquid-free đã qua tool calling hai lượt, streaming tool calls và JSON Schema. chat-apodex-free đã qua Responses JSON/SSE nhưng provider từ chối tool_choice=required (404) và request JSON Schema đã thử (400). Khả năng có thể thay đổi theo endpoint; dùng chat-liquid-free cho ví dụ tool trên trang /models.
+
 ## Chat không streaming
 
 ```bash

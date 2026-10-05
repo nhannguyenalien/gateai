@@ -35,6 +35,7 @@ Idempotency-Key: &lt;unique-request-id&gt;</pre>
   -d '{"model":"chat-apodex-free","stream":true,"messages":[{"role":"user","content":"Xin chào"}]}'</pre>
 <p><code>stream:false</code> trả JSON với <code>choices[].message.content</code>. <code>stream:true</code> trả SSE: đọc từng <code>data:</code>, ghép <code>choices[].delta.content</code>, kết thúc bằng <code>[DONE]</code>. Ngắt kết nối không đồng nghĩa provider đã hủy; kiểm tra job trước khi gửi yêu cầu mới.</p>
 <h3>OpenAI SDK · tool calling nhiều lượt</h3>
+<p>Kiểm thử production ngày 05/10/2026: chat-liquid-free đã qua tool calling hai lượt, streaming tool calls và JSON Schema. chat-apodex-free đã qua Responses JSON/SSE nhưng provider từ chối tool_choice=required (404) và request JSON Schema đã thử (400). Khả năng có thể thay đổi theo endpoint; dùng chat-liquid-free cho ví dụ tool bên dưới.</p>
 <pre>import os, json
 from openai import OpenAI
 client = OpenAI(api_key=os.environ["GATEAI_API_KEY"],
@@ -45,7 +46,7 @@ tools = [{"type":"function", "function":{
   "parameters":{"type":"object", "properties":{
     "a":{"type":"number"}, "b":{"type":"number"}},
     "required":["a","b"], "additionalProperties":False}}}]
-r = client.chat.completions.create(model="chat-apodex-free",
+r = client.chat.completions.create(model="chat-liquid-free",
     messages=messages, tools=tools, tool_choice="required")
 m = r.choices[0].message
 messages.append(m.model_dump(exclude_none=True))
@@ -55,7 +56,7 @@ for call in m.tool_calls or []:
     args = json.loads(call.function.arguments)
     messages.append({"role":"tool", "tool_call_id":call.id,
                      "content":json.dumps(args["a"] + args["b"])})
-r = client.chat.completions.create(model="chat-apodex-free",
+r = client.chat.completions.create(model="chat-liquid-free",
     messages=messages, tools=tools)
 print(r.choices[0].message.content)</pre>
 <p>Ứng dụng thực thi function và gửi kết quả về model. Streaming giữ nguyên delta.tool_calls; ghép arguments theo index trước khi parse JSON. Giữ lại reasoning_details trong lịch sử khi model trả trường này. Không chạy tên hàm/lệnh tùy ý từ model; chỉ thực thi tool đã đăng ký.</p>
