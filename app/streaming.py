@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.billing import finish, reserve
 from app.db import db
-from app.routing import route_for
+from app.routing import route_for, upstream_payload
 from app.settings import settings
 
 
@@ -40,11 +40,11 @@ async def events(lines):
         yield "\n".join(data)
 
 
-async def stream_chat(body, account, key):
+async def stream_chat(body, account, key, kind="chat"):
     payload = dict(body)
     alias = payload.pop("model", None)
-    route = route_for(alias, "chat", payload)
-    job, new = reserve(account["id"], key, "chat", alias, payload, route)
+    route = route_for(alias, kind, payload)
+    job, new = reserve(account["id"], key, kind, alias, payload, route)
     if not new:
         # Reconnecting never resubmits or bills a generation twice.
         return JSONResponse(
@@ -64,14 +64,16 @@ async def stream_chat(body, account, key):
     try:
         request = client.build_request(
             "POST",
-            url + "/chat/completions",
+            url + ("/responses" if kind == "responses" else "/chat/completions"),
             headers={"Authorization": "Bearer " + token},
             json={
-                **payload,
-                **route["fixed"],
-                "model": route["model"],
+                **upstream_payload(payload, route, kind),
                 "stream": True,
-                "stream_options": {"include_usage": True},
+                **(
+                    {"stream_options": {**payload.get("stream_options", {}), "include_usage": True}}
+                    if kind == "chat"
+                    else {}
+                ),
             },
         )
         upstream = await client.send(request, stream=True)
@@ -79,6 +81,23 @@ async def stream_chat(body, account, key):
         if "text/event-stream" not in upstream.headers.get("content-type", ""):
             raise ValueError("Provider did not return SSE")
         save_generation(job["id"], upstream.headers.get("x-generation-id"))
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        await client.aclose()
+        rejected = 400 <= status < 500 and status != 408
+        finish(job["id"], "failed" if rejected else "needs_review", error=f"Provider HTTP {status}")
+        return JSONResponse(
+            {
+                "error": {
+                    "message": f"Provider rejected request (HTTP {status})",
+                    "type": "provider_error",
+                    "code": status,
+                    "job_id": str(job["id"]),
+                }
+            },
+            status_code=status if rejected else 502,
+            headers={"X-Job-ID": str(job["id"])},
+        )
     except BaseException as exc:
         with anyio.CancelScope(shield=True):
             await client.aclose()
@@ -89,7 +108,8 @@ async def stream_chat(body, account, key):
 
     async def relay():
         complete = False
-        content, reasoning = [], []
+        message = {"role": "assistant", "content": None}
+        tool_calls = {}
         usage = None
         generation_id = None
         ended = False
@@ -111,9 +131,12 @@ async def stream_chat(body, account, key):
                             {
                                 "index": 0,
                                 "message": {
-                                    "role": "assistant",
-                                    "content": "".join(content),
-                                    "reasoning": "".join(reasoning),
+                                    **message,
+                                    **(
+                                        {"tool_calls": [tool_calls[i] for i in sorted(tool_calls)]}
+                                        if tool_calls
+                                        else {}
+                                    ),
                                 },
                                 "finish_reason": ended,
                             }
@@ -125,6 +148,19 @@ async def stream_chat(body, account, key):
                     yield "data: [DONE]\n\n"
                     break
                 obj = json.loads(event)
+                if kind == "responses":
+                    event_type = obj.get("type", "")
+                    if event_type in ("response.failed", "error") or obj.get("error"):
+                        raise ValueError("Provider response failed")
+                    response = obj.get("response", {})
+                    save_generation(job["id"], response.get("id"))
+                    if event_type in ("response.completed", "response.incomplete"):
+                        finish(job["id"], "succeeded", response)
+                        complete = True
+                    yield ("event: " + event_type + "\n" if event_type else "") + "data: " + event + "\n\n"
+                    if complete:
+                        break
+                    continue
                 if obj.get("error"):
                     raise ValueError("Provider stream error")
                 if obj.get("id") and obj["id"] != generation_id:
@@ -137,10 +173,14 @@ async def stream_chat(body, account, key):
                         raise ValueError("Provider stream error")
                     ended = choice.get("finish_reason") or ended
                     delta = choice.get("delta", {})
-                    if isinstance(delta.get("content"), str):
-                        content.append(delta["content"])
-                    if isinstance(delta.get("reasoning"), str):
-                        reasoning.append(delta["reasoning"])
+                    for field, value in delta.items():
+                        if field == "tool_calls":
+                            for fragment in value:
+                                index = fragment.get("index", 0)
+                                target = tool_calls.setdefault(index, {})
+                                merge_delta(target, {k: v for k, v in fragment.items() if k != "index"})
+                        else:
+                            merge_delta(message, {field: value})
                 yield "data: " + event + "\n\n"
             if not complete:
                 raise ValueError("Truncated provider stream")
@@ -165,3 +205,16 @@ async def stream_chat(body, account, key):
         media_type="text/event-stream",
         headers={"X-Job-ID": str(job["id"]), "X-Accel-Buffering": "no"},
     )
+
+
+def merge_delta(target, delta):
+    """Accumulate text/function fragments; preserve provider reasoning extensions."""
+    for key, value in delta.items():
+        if isinstance(value, dict):
+            merge_delta(target.setdefault(key, {}), value)
+        elif isinstance(value, str) and key not in ("id", "type", "role"):
+            target[key] = (target.get(key) or "") + value
+        elif isinstance(value, list):
+            target.setdefault(key, []).extend(value)
+        elif value is not None:
+            target[key] = value

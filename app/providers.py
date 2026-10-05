@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.settings import settings
+from app.routing import upstream_payload
 
 
 def fal_url(url):
@@ -14,11 +15,16 @@ def fal_url(url):
 
 def submit(job):
     r = job["route"]
-    payload = {**job["payload"], **r["fixed"]}
+    payload = upstream_payload(job["payload"], r, job["kind"])
     with httpx.Client(timeout=130) as c:
         if job["provider"] == "openrouter":
             res = c.post(
-                "https://openrouter.ai/api/v1/" + ("embeddings" if job["kind"] == "embeddings" else "chat/completions"),
+                "https://openrouter.ai/api/v1/"
+                + (
+                    {"embeddings": "embeddings", "responses": "responses"}.get(
+                        job["kind"], "chat/completions"
+                    )
+                ),
                 headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
                 json={"model": r["model"], **payload},
             )
@@ -35,7 +41,7 @@ def submit(job):
             res = c.post(
                 "https://queue.fal.run/" + r["model"],
                 headers={"Authorization": f"Key {settings.fal_key}"},
-                json=payload,
+                json={k: v for k, v in payload.items() if k != "model"},
             )
         elif job["provider"] == "runpod":
             if not settings.runpod_api_key:
@@ -43,7 +49,7 @@ def submit(job):
             res = c.post(
                 "https://api.runpod.ai/v2/" + r["model"] + "/run",
                 headers={"Authorization": f"Bearer {settings.runpod_api_key}"},
-                json={"input": payload},
+                json={"input": {k: v for k, v in payload.items() if k != "model"}},
             )
         else:
             raise ValueError("Unknown provider")

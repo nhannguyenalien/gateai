@@ -3,6 +3,7 @@ import secrets
 import uuid
 from pathlib import Path
 
+import httpx
 import redis
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -28,7 +29,8 @@ async def body_limit(request: Request, call_next):
         chunks = []
         async for chunk in request.stream():
             size += len(chunk)
-            if size > 65536:
+            limit = 4_300_000 if request.url.path in ("/v1/chat/completions", "/v1/responses") else 65536
+            if size > limit:
                 return JSONResponse({"detail": "Request too large"}, status_code=413)
             chunks.append(chunk)
         request._body = b"".join(chunks)
@@ -218,6 +220,24 @@ def chat_request(body, kind, a, key):
         c.execute("UPDATE jobs SET status='submitting',updated_at=now() WHERE id=%s", (j["id"],))
     try:
         result = submit(j)
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        rejected = 400 <= status < 500 and status != 408
+        finish(j["id"], "failed" if rejected else "needs_review", error=f"Provider HTTP {status}")
+        return JSONResponse(
+            {
+                "error": {
+                    "message": f"Provider rejected request (HTTP {status})"
+                    if rejected
+                    else "Provider outcome uncertain",
+                    "type": "provider_error",
+                    "code": status,
+                    "job_id": str(j["id"]),
+                }
+            },
+            status_code=status if rejected else 502,
+            headers={"X-Job-ID": str(j["id"])},
+        )
     except Exception:
         finish(j["id"], "needs_review", error="Provider outcome uncertain")
         raise HTTPException(
@@ -226,19 +246,31 @@ def chat_request(body, kind, a, key):
         )
     save_generation(j["id"], result.get("id"))
     finish(j["id"], "succeeded", result)
-    return result
+    return JSONResponse(result, headers={"X-Job-ID": str(j["id"])})
 
 
 @app.post("/v1/chat/completions")
-async def chat(body: dict, a=Depends(account), idempotency_key: str = Header(min_length=8, max_length=150)):
+async def chat(
+    body: dict,
+    a=Depends(account),
+    idempotency_key: str | None = Header(default=None, min_length=8, max_length=150),
+):
+    idempotency_key = idempotency_key or str(uuid.uuid4())
     if body.get("stream") is True:
         return await stream_chat(body, a, idempotency_key)
     return await run_in_threadpool(chat_request, body, "chat", a, idempotency_key)
 
 
 @app.post("/v1/responses")
-def responses(body: dict, a=Depends(account), idempotency_key: str = Header(min_length=8, max_length=150)):
-    return chat_request(body, "responses", a, idempotency_key)
+async def responses(
+    body: dict,
+    a=Depends(account),
+    idempotency_key: str | None = Header(default=None, min_length=8, max_length=150),
+):
+    idempotency_key = idempotency_key or str(uuid.uuid4())
+    if body.get("stream") is True:
+        return await stream_chat(body, a, idempotency_key, kind="responses")
+    return await run_in_threadpool(chat_request, body, "responses", a, idempotency_key)
 
 
 @app.get("/admin/stats", dependencies=[Depends(admin)])
@@ -283,7 +315,12 @@ def dashboard():
 
 
 @app.post("/v1/embeddings")
-def embeddings(body: dict, a=Depends(account), idempotency_key: str = Header(min_length=8, max_length=150)):
+def embeddings(
+    body: dict,
+    a=Depends(account),
+    idempotency_key: str | None = Header(default=None, min_length=8, max_length=150),
+):
+    idempotency_key = idempotency_key or str(uuid.uuid4())
     return chat_request(body, "embeddings", a, idempotency_key)
 
 
@@ -294,11 +331,22 @@ def model_playground():
 
     models = available_models()["data"]
     rows = "".join(
-        "<tr>" + "".join("<td>" + html.escape(str(value)) + "</td>" for value in (
-            m["id"], m["upstream_model"], m["endpoint"],
-            str(m["dimensions"]) + " chiều" if m["dimensions"] else "Text · SSE",
-        )) + "</tr>" for m in models
+        "<tr>"
+        + "".join(
+            "<td>" + html.escape(str(value)) + "</td>"
+            for value in (
+                m["id"],
+                m["upstream_model"],
+                m["endpoint"],
+                str(m["dimensions"]) + " chiều" if m["dimensions"] else "Text · SSE",
+            )
+        )
+        + "</tr>"
+        for m in models
     )
-    return (Path("app/models.html").read_text()
-            .replace("<!--MODEL_ROWS-->", rows)
-            .replace("/*MODEL_DATA*/[]", json.dumps(models).replace("<", "\\u003c")))
+    return (
+        Path("app/models.html")
+        .read_text()
+        .replace("<!--MODEL_ROWS-->", rows)
+        .replace("/*MODEL_DATA*/[]", json.dumps(models).replace("<", "\\u003c"))
+    )

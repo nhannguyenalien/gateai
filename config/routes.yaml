@@ -84,8 +84,11 @@ chat-free:
   model: nvidia/nemotron-3-ultra-550b-a55b:free
   free: true
   allowed_inputs: [messages, stream]
-  max_input_bytes: 12000
-  fixed: {max_tokens: 1024}
+  max_input_bytes: 4194304
+  native_api: true
+  max_output_tokens: 32768
+  default_output_tokens: 4096
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
 
@@ -110,8 +113,11 @@ chat-apodex-free:
   model: apodex/apodex-1.1-mini:free
   free: true
   allowed_inputs: [messages, stream]
-  max_input_bytes: 12000
-  fixed: {max_tokens: 1024}
+  max_input_bytes: 4194304
+  native_api: true
+  max_output_tokens: 32768
+  default_output_tokens: 4096
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
 
@@ -122,8 +128,11 @@ chat-laguna-free:
   model: poolside/laguna-xs-2.1:free
   free: true
   allowed_inputs: [messages, stream]
-  max_input_bytes: 12000
-  fixed: {max_tokens: 1024}
+  max_input_bytes: 4194304
+  native_api: true
+  max_output_tokens: 32768
+  default_output_tokens: 4096
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
 
@@ -134,8 +143,11 @@ chat-nano-free:
   model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
   free: true
   allowed_inputs: [messages, stream]
-  max_input_bytes: 12000
-  fixed: {max_tokens: 1024}
+  max_input_bytes: 4194304
+  native_api: true
+  max_output_tokens: 32768
+  default_output_tokens: 4096
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
 
@@ -146,8 +158,11 @@ chat-liquid-free:
   model: liquid/lfm-2.5-2.6b:free
   free: true
   allowed_inputs: [messages, stream]
-  max_input_bytes: 12000
-  fixed: {max_tokens: 1024}
+  max_input_bytes: 4194304
+  native_api: true
+  max_output_tokens: 32768
+  default_output_tokens: 4096
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
 
@@ -157,9 +172,9 @@ embed-nemotron-free:
   provider: openrouter
   model: nvidia/nemotron-3-embed-1b:free
   free: true
-  allowed_inputs: [input]
+  allowed_inputs: [input, encoding_format, dimensions, user]
   max_input_bytes: 12000
-  fixed: {encoding_format: float}
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
   dimensions: 2048
@@ -170,9 +185,9 @@ embed-nemotron-vl-free:
   provider: openrouter
   model: nvidia/llama-nemotron-embed-vl-1b-v2:free
   free: true
-  allowed_inputs: [input]
+  allowed_inputs: [input, encoding_format, dimensions, user]
   max_input_bytes: 12000
-  fixed: {encoding_format: float}
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
   dimensions: 2048
@@ -183,9 +198,9 @@ embed-liquid-free:
   provider: openrouter
   model: liquid/lfm-2.5-embedding-350m:free
   free: true
-  allowed_inputs: [input]
+  allowed_inputs: [input, encoding_format, dimensions, user]
   max_input_bytes: 1500
-  fixed: {encoding_format: float}
+  fixed: {}
   max_cost_micros: 0
   user_price_micros: 0
   dimensions: 1024

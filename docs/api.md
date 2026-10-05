@@ -15,7 +15,7 @@ API project, không đặt key vào frontend, ứng dụng mobile hoặc Git.
 | `chat-free` | `nvidia/nemotron-3-ultra-550b-a55b:free` | Bật, text và streaming |
 | `chat-inkling-free` | `thinkingmachines/inkling:free` | Đã cấu hình nhưng TẮT: OpenRouter trả 403 yêu cầu agentic harness |
 
-Chỉ gửi alias, không gửi ID upstream. Không tự fallback sang model trả phí.
+Có thể gửi alias hoặc ID upstream chính xác của model đang bật. Không tự fallback sang model trả phí.
 Danh sách bật tại thời điểm gọi:
 
 ```bash
@@ -32,8 +32,7 @@ Các trường bổ sung gồm `kind`, `upstream_model`, `streaming`, `max_input
 Endpoint miễn phí chỉ dùng dữ liệu công khai/giả lập. NVIDIA ghi lại dữ liệu theo
 điều khoản trial. [Inkling free](https://openrouter.ai/thinkingmachines/inkling:free)
 chỉ dành cho **agentic harnesses**, ghi lại prompts/outputs để cải thiện sản phẩm;
-không gửi dữ liệu cá nhân hoặc bí mật. Gateway hiện chỉ hỗ trợ text, chưa hỗ trợ
-`tools`, tool messages, ảnh/audio đầu vào dù upstream có khả năng đó.
+không gửi dữ liệu cá nhân hoặc bí mật. Gateway chuyển tiếp tools, tool messages và content parts ảnh/audio/video theo khả năng model.
 
 ## Chat không streaming
 
@@ -45,12 +44,16 @@ curl --fail-with-body -sS "$GATEWAY_URL/v1/chat/completions" \
   -d '{"model":"chat-free","stream":false,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Body chỉ nhận `model`, `messages`, `stream` (boolean, mặc định false).
-`messages` là mảng không rỗng; mỗi phần tử chỉ có `role` (`system`, `user`,
-`assistant`) và `content` dạng string. Không nhận `temperature`, `max_tokens`,
-`tools`, `response_format` hoặc trường bổ sung. Gateway cố định output tối đa
-1.024 tokens và giới hạn JSON payload sau khi bỏ `model` ở 12.000 bytes.
-Không thể sử dụng toàn bộ context window upstream qua hai alias này.
+Chat nhận messages (role system/developer/user/assistant/tool), tools, tool_choice,
+parallel_tool_calls, response_format, temperature, top_p, stop, seed, reasoning,
+max_tokens hoặc max_completion_tokens. Giữ nguyên tool_calls/reasoning_details
+trong lịch sử và gửi kết quả bằng role tool + tool_call_id. Content nhận string
+hoặc parts text/image_url/input_audio/video_url tùy model. Provider phải hỗ trợ
+các tham số yêu cầu; không suy ra mọi model có cùng khả năng.
+
+Giới hạn JSON 4 MiB; output mặc định 4096, tùy chỉnh đến 32768 token (còn chịu
+context/output limit provider). Chỉ n=1. Không nhận provider/models/plugins,
+server tools, file parsing hoặc paid fallback từ client.
 
 HTTP 200 trả JSON chat completion của provider: đọc
 `choices[0].message.content`; `usage` có thể chứa tokens và `cost` USD.
@@ -75,7 +78,7 @@ Nếu mất kết nối/stream bị cắt, job giữ `needs_review`, không tự
 
 ## Idempotency, lỗi và tra cứu job
 
-Mọi POST inference bắt buộc có `Idempotency-Key` dài 8–150 ký tự.
+`Idempotency-Key` tùy chọn với chat/responses/embeddings; nếu gửi dài 8–150 ký tự. Bỏ qua sẽ tạo job mới mỗi lần gọi. Media vẫn bắt buộc header này.
 Tạo key mới cho mỗi yêu cầu logic; giữ nguyên key và body khi retry cùng yêu cầu.
 Không dùng key mới chỉ vì timeout vì có thể tạo thêm tác vụ upstream.
 
@@ -117,7 +120,22 @@ hóa đơn provider. Các alias free cấu hình giá dự phòng và giá bán 
 
 ## Các endpoint chưa bật model
 
-`POST /v1/responses` hiện không có alias bật.
+`POST /v1/responses` dùng cùng các chat alias bật: input string hoặc items,
+instructions, function tools, text.format, reasoning, max_output_tokens, stream.
+Stateless: gửi lịch sử mỗi lần; chưa hỗ trợ previous_response_id, store:true,
+background:true hoặc GET/DELETE response. Stream giữ event type và kết thúc bằng
+response.completed/response.incomplete; đọc status, không coi incomplete là trả lời đầy đủ.
+Chat stream giữ nguyên delta.tool_calls và reasoning_details; ghép tool arguments
+theo index. Gateway lưu kết quả tool calls khi stream hoàn tất.
+
+Computer use cần agent runtime/browser/desktop sandbox bên ứng dụng. Có thể dùng
+function tools để thực thi click/type/screenshot, rồi gửi kết quả về model có vision.
+Gateway không cung cấp máy tính và chưa hỗ trợ computer_use riêng của vendor.
+Chưa hỗ trợ Realtime/Files/Batch/fine-tuning/web search. Stream giới hạn 180 giây,
+2 triệu ký tự, 256 KiB/event; lỗi hoặc disconnect giữ job needs_review.
+
+Ví dụ SDK, tools và Responses tại https://ai-gateway.schoolsai.work/models.
+
 `POST /v1/image`, `/v1/video`, `/v1/tts`, `/v1/stt`, `/v1/custom` có giao thức
 `{"model":"alias","input":{...}}`, trả 202 + job để poll khi được cấu hình;
 hiện tất cả route media/Runpod đều tắt. Dev chưa nên tích hợp như dịch vụ đang sẵn sàng.
@@ -169,7 +187,7 @@ GET /v1/models trả thêm endpoint, dimensions và giới hạn input cho dev c
 | embed-liquid-free | liquid/lfm-2.5-embedding-350m:free | 1024 |
 
 POST /v1/embeddings nhận input là chuỗi hoặc mảng 1–16 chuỗi không rỗng.
-Chỉ hỗ trợ text, vector float; không hỗ trợ ảnh, token IDs hoặc tùy chỉnh dimensions.
+Nhận text và encoding_format float/base64. dimensions nếu gửi phải đúng số chiều cấu hình; chưa hỗ trợ ảnh/token IDs.
 Giới hạn JSON: Liquid 1500 bytes; NVIDIA 12000 bytes. Đây là giới hạn gateway,
 không phải token context: Liquid có context 512 token, provider vẫn có thể từ chối
 input vượt giới hạn token. Dùng cùng model khi index và query; không trộn vector

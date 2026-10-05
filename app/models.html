@@ -7,7 +7,7 @@ body{font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 20px;backgr
 <h1>GateAI · API docs & playground</h1>
 <nav><a href="#catalog">Model đang bật</a> · <a href="#docs">Tài liệu API</a> · <a href="#playground">Gọi thử</a></nav>
 <h2 id="catalog">Model name dùng trong API</h2>
-<p>Dùng chính xác <strong>Gateway ID</strong> trong trường <code>model</code>. Upstream ID là model phía provider, không dùng thay alias ở gateway. Danh sách tự cập nhật theo cấu hình đang triển khai; xem docs không cần key.</p>
+<p>Trường <code>model</code> nhận <strong>Gateway ID hoặc Upstream ID</strong> trong bảng. Chỉ model đang bật mới được gọi. Danh sách tự cập nhật theo cấu hình đang triển khai; xem docs không cần key.</p>
 <section><table><thead><tr><th>Gateway ID / model name</th><th>Upstream ID</th><th>Endpoint</th><th>Output</th></tr></thead><tbody><!--MODEL_ROWS--></tbody></table></section>
 <p class="hint">Các model hiện tại là free, không tự fallback sang model trả phí. Free có quota và không có bảo đảm uptime. Laguna free dự kiến ngừng 31/10/2026.</p>
 <h2 id="docs">Tài liệu API</h2>
@@ -16,25 +16,70 @@ body{font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 20px;backgr
 <pre>Authorization: Bearer &lt;PROJECT_API_KEY&gt;
 Content-Type: application/json
 Idempotency-Key: &lt;unique-request-id&gt;</pre>
-<p>Idempotency-Key bắt buộc cho POST chat/embedding, dài 8–150 ký tự. Giữ nguyên key và body khi retry cùng yêu cầu; tạo key mới cho yêu cầu mới. Yêu cầu đã hoàn tất trả lại kết quả cũ; đang xử lý trả 409. Rate limit áp dụng theo project, kể cả model free.</p>
+<p>Idempotency-Key tùy chọn cho chat/responses/embedding; nếu gửi phải dài 8–150 ký tự. Nên gửi để retry an toàn. Nếu bỏ qua, mỗi lần gọi là một job mới. Giữ nguyên key và body khi retry cùng yêu cầu; tạo key mới cho yêu cầu mới. Yêu cầu đã hoàn tất trả lại kết quả cũ; đang xử lý trả 409. Rate limit áp dụng theo project, kể cả model free.</p>
 <h3>Endpoints</h3>
 <section><table><thead><tr><th>Method</th><th>Path</th><th>Sử dụng</th></tr></thead><tbody>
 <tr><td>GET</td><td>/v1/models</td><td>Danh sách model đang bật; cần project key.</td></tr>
-<tr><td>POST</td><td>/v1/chat/completions</td><td>Chat text; messages bắt buộc, stream tùy chọn.</td></tr>
+<tr><td>POST</td><td>/v1/chat/completions</td><td>Chat, function tools, structured output, multimodal theo model; stream tùy chọn.</td></tr>
+<tr><td>POST</td><td>/v1/responses</td><td>Responses stateless: input, instructions, function tools, text.format, stream.</td></tr>
 <tr><td>POST</td><td>/v1/embeddings</td><td>Vector float cho text hoặc batch text.</td></tr>
 <tr><td>GET</td><td>/v1/balance</td><td>Credit và giới hạn của project.</td></tr>
 <tr><td>GET</td><td>/v1/jobs/{id}</td><td>Trạng thái yêu cầu thuộc project.</td></tr>
 </tbody></table></section>
 <h3>Chat & streaming</h3>
-<p><code>messages</code> là mảng không rỗng gồm <code>role</code> (system/user/assistant) và <code>content</code> dạng chuỗi. Hiện chỉ nhận text; giới hạn JSON 12000 bytes, output tối đa 1024 token. Không truyền temperature, tools hoặc max_tokens: route hiện chưa cho phép các trường này.</p>
+<p>Nhận role system/developer/user/assistant/tool; content dạng text hoặc content parts (text, image_url, input_audio, video_url). Hỗ trợ tools, tool_choice, parallel_tool_calls, response_format, temperature, top_p, stop, seed, reasoning và giới hạn token. Khả năng thực tế tùy model/provider; gateway yêu cầu provider hỗ trợ tham số đã gửi. Payload tối đa 4 MiB sau khi serialize JSON; mặc định output 4096 token, cho phép max_tokens hoặc max_completion_tokens đến 32768, vẫn chịu giới hạn model.</p>
 <pre>curl -N https://ai-gateway.schoolsai.work/v1/chat/completions \
   -H "Authorization: Bearer $GATEAI_API_KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{"model":"chat-apodex-free","stream":true,"messages":[{"role":"user","content":"Xin chào"}]}'</pre>
 <p><code>stream:false</code> trả JSON với <code>choices[].message.content</code>. <code>stream:true</code> trả SSE: đọc từng <code>data:</code>, ghép <code>choices[].delta.content</code>, kết thúc bằng <code>[DONE]</code>. Ngắt kết nối không đồng nghĩa provider đã hủy; kiểm tra job trước khi gửi yêu cầu mới.</p>
+<h3>OpenAI SDK · tool calling nhiều lượt</h3>
+<pre>import os, json
+from openai import OpenAI
+client = OpenAI(api_key=os.environ["GATEAI_API_KEY"],
+                base_url="https://ai-gateway.schoolsai.work/v1")
+messages = [{"role":"user", "content":"Tính 2 + 3 bằng tool add"}]
+tools = [{"type":"function", "function":{
+  "name":"add", "description":"Add two numbers",
+  "parameters":{"type":"object", "properties":{
+    "a":{"type":"number"}, "b":{"type":"number"}},
+    "required":["a","b"], "additionalProperties":False}}}]
+r = client.chat.completions.create(model="chat-apodex-free",
+    messages=messages, tools=tools, tool_choice="required")
+m = r.choices[0].message
+messages.append(m.model_dump(exclude_none=True))
+for call in m.tool_calls or []:
+    if call.function.name != "add":
+        raise ValueError("Unknown tool")
+    args = json.loads(call.function.arguments)
+    messages.append({"role":"tool", "tool_call_id":call.id,
+                     "content":json.dumps(args["a"] + args["b"])})
+r = client.chat.completions.create(model="chat-apodex-free",
+    messages=messages, tools=tools)
+print(r.choices[0].message.content)</pre>
+<p>Ứng dụng thực thi function và gửi kết quả về model. Streaming giữ nguyên delta.tool_calls; ghép arguments theo index trước khi parse JSON. Giữ lại reasoning_details trong lịch sử khi model trả trường này. Không chạy tên hàm/lệnh tùy ý từ model; chỉ thực thi tool đã đăng ký.</p>
+<h3>Structured output & Responses API</h3>
+<pre># Chat: thêm response_format theo JSON Schema
+response_format = {"type":"json_schema", "json_schema":{
+  "name":"answer", "strict":True, "schema":{"type":"object",
+  "properties":{"answer":{"type":"string"}},
+  "required":["answer"], "additionalProperties":False}}}
+
+# Responses: cùng alias hoặc ID gốc; stream cũng được hỗ trợ
+r = client.responses.create(model="chat-apodex-free",
+    input="Say hello", max_output_tokens=256)
+print(r.output_text)
+for event in client.responses.create(model="chat-apodex-free",
+    input="Say hello", stream=True):
+    if event.type == "response.output_text.delta":
+        print(event.delta, end="")</pre>
+<p>Responses dùng tools dạng function với name/parameters ở cấp ngoài; vòng tiếp theo gửi input items gồm function_call và function_call_output. Structured output dùng text.format. Stream giữ event type như response.output_text.delta, response.completed, response.incomplete; không dùng [DONE] như Chat. Chưa hỗ trợ lưu response, previous_response_id, background hoặc truy xuất response theo ID.</p>
+<h3>Computer use & giới hạn tương thích</h3>
+<p>Có thể khai báo function click/type/screenshot rồi chạy chúng trong browser/desktop sandbox của ứng dụng và gửi kết quả/ảnh về model hỗ trợ vision. Gateway không cung cấp trình duyệt/máy ảo và chưa hỗ trợ tool computer_use riêng của vendor. Không đồng nghĩa tất cả model free hỗ trợ vision/tools/schema.</p>
+<p>Chưa bật web search, file parsing, built-in server tools, plugin trả phí, model fallback tùy ý, Realtime, Files, Batch, fine-tuning hoặc media/Runpod. Không nhận models/provider/plugins từ client để tránh vượt chính sách chi phí. Chỉ n=1; stream giới hạn 180 giây, 2 triệu ký tự và 256 KiB mỗi event. Quota free và giới hạn provider vẫn áp dụng.</p>
 <h3>Embeddings</h3>
-<p><code>input</code> là chuỗi không rỗng hoặc mảng 1–16 chuỗi không rỗng. Output tại <code>data[].embedding</code>, thứ tự tại <code>data[].index</code>. Gateway cố định encoding float; không nhận dimensions, ảnh, token IDs hoặc encoding_format từ client.</p>
+<p><code>input</code> là chuỗi không rỗng hoặc mảng 1–16 chuỗi không rỗng. Output tại <code>data[].embedding</code>, thứ tự tại <code>data[].index</code>. Nhận encoding_format float hoặc base64 (tương thích SDK). dimensions nếu gửi phải đúng số chiều trong bảng. Chưa nhận ảnh hoặc token IDs.</p>
 <pre>curl https://ai-gateway.schoolsai.work/v1/embeddings \
   -H "Authorization: Bearer $GATEAI_API_KEY" \
   -H "Content-Type: application/json" \
@@ -42,7 +87,7 @@ Idempotency-Key: &lt;unique-request-id&gt;</pre>
   -d '{"model":"embed-liquid-free","input":["Bút chì đỏ","Bút chì xanh"]}'</pre>
 <p>Liquid: 1024 chiều, tối đa 1500 bytes JSON và context provider 512 token. NVIDIA: 2048 chiều, tối đa 12000 bytes JSON. Bytes không tương đương token; provider có thể từ chối input dài. Dùng cùng model cho index và query, không trộn vector giữa các model dù cùng số chiều.</p>
 <h3>Lỗi thường gặp</h3>
-<p><strong>401</strong>: key sai/đã thu hồi. <strong>400/422</strong>: model, tham số hoặc header không hợp lệ. <strong>402</strong>: thiếu credit. <strong>409</strong>: idempotency trùng hoặc job đang xử lý. <strong>413</strong>: input quá dài. <strong>429</strong>: rate limit hoặc budget. <strong>502</strong>: kết quả provider chưa xác định; xem job_id nếu có. <strong>503</strong>: dịch vụ/provider chưa sẵn sàng. Chi tiết nằm trong trường <code>detail</code>; lỗi SSE có thể nằm trong sự kiện stream.</p>
+<p><strong>401</strong>: key sai/đã thu hồi. <strong>400/422</strong>: model, tham số hoặc header không hợp lệ. <strong>402</strong>: thiếu credit. <strong>409</strong>: idempotency trùng hoặc job đang xử lý. <strong>413</strong>: input quá dài. <strong>429</strong>: rate limit hoặc budget. <strong>502</strong>: kết quả provider chưa xác định; xem job_id nếu có. <strong>503</strong>: dịch vụ/provider chưa sẵn sàng. Chi tiết nằm trong trường <code>detail</code> hoặc <code>error</code>; lỗi SSE có thể nằm trong sự kiện stream.</p>
 <p><a href="/docs">OpenAPI tương tác</a> · <a href="/openapi.json">OpenAPI JSON</a></p>
 <h2 id="playground">Gọi thử API</h2>
 <p>Chọn model ID, gọi thử chat hoặc tạo embedding bằng project API key.</p>
