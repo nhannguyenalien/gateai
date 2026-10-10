@@ -107,6 +107,10 @@ def route_for(alias, kind, payload):
         raise HTTPException(400, "Responses input must be text")
     if r["provider"] == "fal" and not settings.fal_key:
         raise HTTPException(503, "fal provider is not configured")
+    if r["provider"] == "cloudflare" and not (
+        settings.cloudflare_worker_url and settings.cloudflare_worker_token
+    ):
+        raise HTTPException(503, "Cloudflare provider is not configured")
     if r["provider"] == "runpod" and not settings.runpod_api_key:
         raise HTTPException(503, "Runpod provider is not configured")
     return r

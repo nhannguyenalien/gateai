@@ -21,6 +21,15 @@ def reserve(account_id, key, kind, alias, payload, route):
             if old["request_hash"] != fingerprint:
                 raise HTTPException(409, "Idempotency key reused with different input")
             return old, False
+        limit = route.get("daily_limit")
+        if limit:
+            # Free-tier ceiling (Asia/Ho_Chi_Minh day), counted under the global admission lock.
+            used = c.execute(
+                "SELECT count(*) AS n FROM jobs WHERE alias=%s AND status<>'failed' AND (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date=(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date",
+                (alias,),
+            ).fetchone()["n"]
+            if used >= limit:
+                raise HTTPException(429, "Daily quota for this model is exhausted")
         account = c.execute("SELECT * FROM accounts WHERE id=%s FOR UPDATE", (account_id,)).fetchone()
         cost, price = route["max_cost_micros"], route["user_price_micros"]
         if account["balance"] < price:

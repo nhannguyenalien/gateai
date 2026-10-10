@@ -1,3 +1,4 @@
+import base64
 from urllib.parse import urlparse
 
 import httpx
@@ -13,11 +14,46 @@ def fal_url(url):
     return url
 
 
+class ProviderResponseError(Exception):
+    """A provider can return an error envelope even with HTTP 200."""
+
+    def __init__(self, error):
+        error = error if isinstance(error, dict) else {}
+        code = error.get("code")
+        self.code = code if type(code) is int and 400 <= code <= 599 else 502
+        metadata = error.get("metadata")
+        unavailable = isinstance(metadata, dict) and metadata.get("error_type") == "provider_unavailable"
+        self.public_type = "provider_unavailable" if unavailable else "provider_error"
+        self.status = 503 if unavailable else self.code
+        # Do not expose provider messages: they may echo prompts or credentials.
+        super().__init__(self.public_type)
+
+
 def submit(job):
     r = job["route"]
     payload = upstream_payload(job["payload"], r, job["kind"])
     with httpx.Client(timeout=130) as c:
-        if job["provider"] == "openrouter":
+        if job["provider"] == "openrouter" and job["kind"] == "image":
+            # Synchronous Image API: returns base64 bytes, no provider job to poll.
+            res = c.post(
+                "https://openrouter.ai/api/v1/images",
+                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                json={"model": r["model"], **{k: v for k, v in payload.items() if k != "model"}},
+            )
+        elif job["provider"] == "cloudflare":
+            if not (settings.cloudflare_worker_url and settings.cloudflare_worker_token):
+                raise ValueError("Cloudflare worker not configured")
+            res = c.post(
+                settings.cloudflare_worker_url.rstrip("/") + "/generate",
+                headers={"Authorization": f"Bearer {settings.cloudflare_worker_token}"},
+                json={k: v for k, v in payload.items() if k != "model"},
+            )
+            res.raise_for_status()
+            media = res.headers.get("content-type", "image/png").split(";")[0]
+            if not media.startswith("image/"):
+                raise ValueError("Cloudflare worker returned non-image output")
+            return {"data": [{"b64_json": base64.b64encode(res.content).decode(), "media_type": media}]}
+        elif job["provider"] == "openrouter":
             res = c.post(
                 "https://openrouter.ai/api/v1/"
                 + (
@@ -56,7 +92,7 @@ def submit(job):
         res.raise_for_status()
         data = res.json()
         if data.get("error"):
-            raise ValueError("Provider returned an error")
+            raise ProviderResponseError(data["error"])
         return data
 
 

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     fal_key: str = ""
     runpod_api_key: str = ""
+    cloudflare_worker_url: str = ""
+    cloudflare_worker_token: str = ""
     global_daily_cap_micros: int = 20_000_000
     routes_file: str = "config/routes.yaml"
 

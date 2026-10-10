@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 from app.billing import finish
 from app.db import db
 from app.providers import poll, submit
-from app.storage import archive
+from app.storage import archive, archive_images
 
 log = logging.getLogger("gateai.worker")
 
@@ -31,6 +31,9 @@ def tick():
     try:
         if j["status"] == "queued":
             ref = submit(j)
+            if j["provider"] in ("openrouter", "cloudflare") and j["kind"] == "image":
+                finish(j["id"], "succeeded", archive_images(ref, j["id"]))
+                return True
             with db() as c:
                 c.execute(
                     "UPDATE jobs SET status='running',provider_ref=%s,updated_at=now() WHERE id=%s",
