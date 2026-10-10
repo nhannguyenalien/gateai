@@ -6,6 +6,9 @@ from fastapi import HTTPException
 from app.settings import settings
 
 
+MEDIA_ENDPOINTS = {k: f"/v1/{k}" for k in ("image", "video", "tts", "stt", "custom")}
+
+
 def available_models():
     routes = yaml.safe_load(Path(settings.routes_file).read_text()) or {}
     return {
@@ -19,13 +22,17 @@ def available_models():
                 "kind": r["kind"],
                 "upstream_model": r["model"],
                 "streaming": r["kind"] == "chat",
-                "endpoint": "/v1/embeddings" if r["kind"] == "embeddings" else "/v1/chat/completions",
+                "endpoint": MEDIA_ENDPOINTS.get(r["kind"])
+                or ("/v1/embeddings" if r["kind"] == "embeddings" else "/v1/chat/completions"),
                 "dimensions": r.get("dimensions"),
                 "max_input_bytes": r.get("max_input_bytes", 16000),
                 "max_output_tokens": r.get("max_output_tokens", r.get("fixed", {}).get("max_tokens")),
                 "native_api": r.get("native_api", False),
+                "price_usd": r["user_price_micros"] / 1_000_000,
                 "endpoints": (
-                    ["/v1/chat/completions", "/v1/responses"]
+                    [MEDIA_ENDPOINTS[r["kind"]]]
+                    if r["kind"] in MEDIA_ENDPOINTS
+                    else ["/v1/chat/completions", "/v1/responses"]
                     if r.get("native_api")
                     else ["/v1/embeddings"]
                     if r["kind"] == "embeddings"
@@ -70,6 +77,9 @@ def route_for(alias, kind, payload):
         raise HTTPException(400, "Unsupported input parameter")
     if len(json.dumps(payload).encode()) > r.get("max_input_bytes", 16000):
         raise HTTPException(413, "Input exceeds priced limit")
+    for field, allowed in r.get("allowed_values", {}).items():
+        if field in payload and payload[field] not in allowed:
+            raise HTTPException(400, f"{field} must be one of: " + ", ".join(allowed))
     if "stream" in payload and not isinstance(payload["stream"], bool):
         raise HTTPException(400, "stream must be boolean")
     if r["provider"] == "openrouter" and not settings.openrouter_api_key:

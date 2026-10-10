@@ -49,10 +49,73 @@ image-flux:
   provider: openrouter
   model: black-forest-labs/flux.2-klein-4b
   allowed_inputs: [prompt, aspect_ratio]
+  allowed_values: {aspect_ratio: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9"]}
   max_input_bytes: 10000
   fixed: {n: 1}
   max_cost_micros: 16000
   user_price_micros: 80000
+
+# Famous image models via OpenRouter Image API. Price = 5x max_cost (OpenRouter list prices, 2026-10-10).
+# FLUX.2 pro: $0.03/MP, default ~1MP
+image-flux-pro:
+  enabled: true
+  kind: image
+  provider: openrouter
+  model: black-forest-labs/flux.2-pro
+  allowed_inputs: [prompt, aspect_ratio]
+  allowed_values: {aspect_ratio: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9"]}
+  max_input_bytes: 10000
+  fixed: {n: 1, output_format: jpeg}
+  max_cost_micros: 36000
+  user_price_micros: 180000
+# Google Nano Banana 2.1: $0.00003/output token, 1K image ~1.3k tokens (~$0.04)
+image-nano-banana:
+  enabled: true
+  kind: image
+  provider: openrouter
+  model: google/gemini-nano-banana-2.1
+  allowed_inputs: [prompt, aspect_ratio]
+  allowed_values: {aspect_ratio: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9", "4:5", "5:4"]}
+  max_input_bytes: 10000
+  fixed: {n: 1, resolution: 1K}
+  max_cost_micros: 45000
+  user_price_micros: 225000
+# OpenAI gpt-image-1-mini: $0.000008/output token, medium 1024x1024 ~1k tokens (~$0.01)
+image-gpt-mini:
+  enabled: true
+  kind: image
+  provider: openrouter
+  model: openai/gpt-image-1-mini
+  allowed_inputs: [prompt, aspect_ratio]
+  allowed_values: {aspect_ratio: ["1:1", "3:2", "2:3"]}
+  max_input_bytes: 10000
+  fixed: {n: 1, quality: medium}
+  max_cost_micros: 15000
+  user_price_micros: 75000
+# ByteDance Seedream 5.0 lite: $0.035/image, 2K
+image-seedream:
+  enabled: true
+  kind: image
+  provider: openrouter
+  model: bytedance-seed/seedream-5-0-lite
+  allowed_inputs: [prompt, aspect_ratio]
+  allowed_values: {aspect_ratio: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9", "4:5", "5:4"]}
+  max_input_bytes: 10000
+  fixed: {n: 1, resolution: 2K}
+  max_cost_micros: 35000
+  user_price_micros: 175000
+# xAI Grok Imagine 2.0: $0.04/image (low quality, 1K)
+image-grok:
+  enabled: true
+  kind: image
+  provider: openrouter
+  model: x-ai/grok-imagine-image-2.0
+  allowed_inputs: [prompt, aspect_ratio]
+  allowed_values: {aspect_ratio: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9"]}
+  max_input_bytes: 10000
+  fixed: {n: 1, quality: low, resolution: 1K}
+  max_cost_micros: 40000
+  user_price_micros: 200000
 
 video-standard:
   enabled: false

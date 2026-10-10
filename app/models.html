@@ -22,6 +22,7 @@ Idempotency-Key: &lt;unique-request-id&gt;</pre>
 <tr><td>GET</td><td>/v1/models</td><td>Danh sách model đang bật; cần project key.</td></tr>
 <tr><td>POST</td><td>/v1/chat/completions</td><td>Chat, function tools, structured output, multimodal theo model; stream tùy chọn.</td></tr>
 <tr><td>POST</td><td>/v1/responses</td><td>Responses stateless: input, instructions, function tools, text.format, stream.</td></tr>
+<tr><td>POST</td><td>/v1/image</td><td>Tạo ảnh bất đồng bộ (202 + job); poll GET /v1/jobs/{id}, ảnh tự xóa sau 3 ngày. Model và giá: trường <code>kind: image</code>, <code>price_usd</code> trong /v1/models; chi tiết ở docs/api.md.</td></tr>
 <tr><td>POST</td><td>/v1/embeddings</td><td>Vector float cho text hoặc batch text.</td></tr>
 <tr><td>GET</td><td>/v1/balance</td><td>Credit và giới hạn của project.</td></tr>
 <tr><td>GET</td><td>/v1/jobs/{id}</td><td>Trạng thái yêu cầu thuộc project.</td></tr>
@@ -77,7 +78,7 @@ for event in client.responses.create(model="chat-apodex-free",
         print(event.delta, end="")</pre>
 <p>Responses dùng tools dạng function với name/parameters ở cấp ngoài; vòng tiếp theo gửi input items gồm function_call và function_call_output. Structured output dùng text.format. Stream giữ event type như response.output_text.delta, response.completed, response.incomplete; không dùng [DONE] như Chat. Chưa hỗ trợ lưu response, previous_response_id, background hoặc truy xuất response theo ID.</p>
 <h3>Computer use & giới hạn tương thích</h3>
-<p>Có thể khai báo function click/type/screenshot rồi chạy chúng trong browser/desktop sandbox của ứng dụng và gửi kết quả/ảnh về model hỗ trợ vision. Gateway không cung cấp trình duyệt/máy ảo và chưa hỗ trợ tool computer_use riêng của vendor. Không đồng nghĩa tất cả model free hỗ trợ vision/tools/schema.</p>
+<p>Có thể khai báo function click/type/screenshot rồi chạy chúng trong browser/desktop sandbox của ứng dụng và gửi kết quả/ảnh về model hỗ trợ vision. Kiểm thử ảnh ngày 06/10/2026: chat-nano-free trả được tọa độ chuẩn hóa, nhưng bài nhiều bước chưa đạt do NVIDIA báo quá tải (16/16 requests). Client cần kiểm tra và chuyển đổi tọa độ rõ ràng. Gateway không cung cấp trình duyệt/máy ảo và chưa hỗ trợ tool computer_use riêng của vendor. Không đồng nghĩa tất cả model free hỗ trợ vision/tools/schema.</p>
 <p>Chưa bật web search, file parsing, built-in server tools, plugin trả phí, model fallback tùy ý, Realtime, Files, Batch, fine-tuning hoặc media/Runpod. Không nhận models/provider/plugins từ client để tránh vượt chính sách chi phí. Chỉ n=1; stream giới hạn 180 giây, 2 triệu ký tự và 256 KiB mỗi event. Quota free và giới hạn provider vẫn áp dụng.</p>
 <h3>Embeddings</h3>
 <p><code>input</code> là chuỗi không rỗng hoặc mảng 1–16 chuỗi không rỗng. Output tại <code>data[].embedding</code>, thứ tự tại <code>data[].index</code>. Nhận encoding_format float hoặc base64 (tương thích SDK). dimensions nếu gửi phải đúng số chiều trong bảng. Chưa nhận ảnh hoặc token IDs.</p>

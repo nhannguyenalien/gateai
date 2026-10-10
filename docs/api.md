@@ -140,9 +140,52 @@ Chưa hỗ trợ Realtime/Files/Batch/fine-tuning/web search. Stream giới hạ
 
 Ví dụ SDK, tools và Responses tại https://ai-gateway.schoolsai.work/models.
 
-`POST /v1/image`, `/v1/video`, `/v1/tts`, `/v1/stt`, `/v1/custom` có giao thức
+`POST /v1/video`, `/v1/tts`, `/v1/stt`, `/v1/custom` có giao thức
 `{"model":"alias","input":{...}}`, trả 202 + job để poll khi được cấu hình;
-hiện tất cả route media/Runpod đều tắt. Dev chưa nên tích hợp như dịch vụ đang sẵn sàng.
+hiện các route video/tts/stt/custom (Runpod) đều tắt. Tạo ảnh đã bật, xem mục dưới.
+
+## Tạo ảnh (`POST /v1/image`)
+
+Bất đồng bộ: gọi trả HTTP 202 kèm job, rồi poll `GET /v1/jobs/{id}` đến khi
+`status` là `succeeded` (thường 5–30 giây; Cloudflare khoảng 15–20 giây).
+Header `Idempotency-Key` (8–150 ký tự) **bắt buộc**. Ảnh lưu ở storage riêng
+và **tự xóa sau 3 ngày**; tải về ngay, đừng lưu URL lâu dài.
+
+| `model` | Upstream | Giá / ảnh (USD) | Ghi chú |
+| --- | --- | --- | --- |
+| `image-flux-free` | Cloudflare FLUX.2 klein 4B | 0,01 | Tối đa 80 ảnh/ngày cho toàn hệ thống (giờ Việt Nam); nhận thêm `width`, `height` (256–1920), `guidance`, `seed` |
+| `image-flux` | FLUX.2 klein 4B (OpenRouter) | 0,08 | Nhanh, rẻ, ~1 MP |
+| `image-gpt-mini` | OpenAI gpt-image-1-mini | 0,075 | Chất lượng medium; tỉ lệ `1:1`, `3:2`, `2:3` |
+| `image-flux-pro` | FLUX.2 pro | 0,18 | ~1 MP, xuất JPEG |
+| `image-seedream` | ByteDance Seedream 5.0 lite | 0,175 | Độ phân giải 2K |
+| `image-grok` | xAI Grok Imagine 2.0 | 0,20 | Quality low, 1K |
+| `image-nano-banana` | Google Nano Banana 2.1 | 0,225 | Độ phân giải 1K |
+
+Giá là giá bán cố định mỗi ảnh, được trừ khi nhận job và hoàn lại nếu job `failed`.
+Route OpenRouter được đặt ở mức 5 lần chi phí niêm yết của nhà cung cấp.
+Danh sách bật và giá thực tế lấy tại `GET /v1/models` (`kind: "image"`, `price_usd`).
+
+Tham số `input`: `prompt` (bắt buộc) và `aspect_ratio` (tùy chọn) với route OpenRouter;
+`aspect_ratio` nằm trong danh sách của từng route, giá trị khác trả 400 và không bị trừ tiền
+(`1:1`, `4:3`, `3:4`, `3:2`, `2:3`, `16:9`, `9:16`, `21:9`; thêm `4:5`, `5:4` cho
+`image-nano-banana` và `image-seedream`; `image-gpt-mini` chỉ nhận `1:1`, `3:2`, `2:3`).
+Số ảnh, độ phân giải và chất lượng do gateway cố định; client không đổi được.
+
+```bash
+curl -sS "$GATEWAY_URL/v1/image" \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: application/json' \
+  -d '{"model":"image-flux","input":{"prompt":"A friendly 3D robot mascot","aspect_ratio":"1:1"}}'
+# -> 202 {"id":"<job-id>","status":"queued",...}
+
+curl -sS "$GATEWAY_URL/v1/jobs/$JOB_ID" -H "Authorization: Bearer $GATEWAY_API_KEY"
+# -> {"status":"succeeded","result":{"images":["https://...signed-url..."]},...}
+```
+
+`result.images[]` là URL ký có hạn 15 phút (gọi lại `GET /v1/jobs/{id}` để lấy URL mới
+trong vòng 3 ngày). File là JPEG hoặc PNG tùy model. Nếu `status` là `needs_review`,
+gateway không biết chắc nhà cung cấp đã tính phí hay chưa; đừng gửi lại bằng key mới,
+hãy liên hệ operator kèm job ID. 402 là thiếu credit, 429 là hết quota ngày hoặc rate limit.
 
 ## Admin: cấp key cho project (chỉ operator)
 
@@ -213,3 +256,31 @@ trong lần test. Mercury dùng API riêng nên chưa đưa vào chat endpoint.
 
 Chỉ gửi dữ liệu mẫu không nhạy cảm tới free provider; có thể có logging/training
 theo điều khoản từng provider. Kết quả test thành công không bảo đảm SLA.
+
+### Screenshot-driven computer-use check (2026-10-06)
+
+A live `chat-nano-free` call accepted a playground screenshot and returned a
+`browser_action` function call at zero reported cost. The returned coordinates
+were normalized strings (0–1), despite an integer pixel schema. The test runner
+explicitly converted `(0.4934, 0.6889)` to `(211, 538)` for a 428×781 screenshot
+and clicked the model selector in Codex's browser. This proves an action can be
+executed, **not** that the entire task completed correctly.
+
+The subsequent screenshot/tool-result round trip failed. A direct OpenRouter
+probe with `provider.require_parameters=true` returned HTTP 200 containing
+`error.code=502`, `error.metadata.error_type=provider_unavailable`, and NVIDIA's
+`ResourceExhausted: Worker local total request limit reached (16/16)` message.
+A later gateway round trip returned HTTP 200, but its scroll action omitted
+the required x/y coordinates and was rejected without execution. Endpoint
+capacity and invalid model actions prevented a passing multi-step result.
+The gateway now recognizes error envelopes inside HTTP 200 and returns a
+sanitized HTTP 503 for `provider_unavailable`, with `X-Job-ID` and `error.job_id`.
+The job remains `needs_review`: inspect it before retrying an ambiguous request;
+there is no automatic paid fallback or automatic resubmission.
+
+Client runners must validate the action name, coordinates, bounds and allowed
+page before executing anything. Choose an explicit coordinate convention;
+never silently interpret fractional coordinates as pixel positions. Native
+vendor `computer_use` / `computer_use_preview` tools remain unsupported (400).
+These results do not establish native computer-use compatibility or a passing
+multi-step visual-control benchmark.
