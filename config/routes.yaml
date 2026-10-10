@@ -42,8 +42,7 @@ image-flux-free:
   max_cost_micros: 1000
   user_price_micros: 10000
 
-# OpenRouter Image API (sync). Price is a conservative ceiling: verify against usage.cost
-# from a live call, then tune. Requires OPENROUTER_API_KEY and S3_* storage.
+# OpenRouter Image API (sync). FLUX.2 klein 4B lists $0.014/MP; price targets >=5x cost. Requires OPENROUTER_API_KEY and S3_* storage.
 image-flux:
   enabled: true
   kind: image
@@ -52,8 +51,8 @@ image-flux:
   allowed_inputs: [prompt, aspect_ratio]
   max_input_bytes: 10000
   fixed: {n: 1}
-  max_cost_micros: 50000
-  user_price_micros: 100000
+  max_cost_micros: 16000
+  user_price_micros: 80000
 
 video-standard:
   enabled: false
